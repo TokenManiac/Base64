@@ -1,186 +1,99 @@
 --!strict
+-- Simple throughput benchmark for Base64 encode/decode
+-- Usage:
+--   lune run bench.luau               -- defaults: 16 MB, ~1s per test
+--   SIZE_MB=64 SECONDS=2 lune run bench.luau
 
--- Simple throughput benchmark for Base64 (MB/s)
--- Edit the constants below to change size and iterations.
 
-local SIZE_MB = 1        -- payload size per iteration
-local ENC_ITERS = 4     -- starting encode iterations (adaptive)
-local DEC_ITERS = 4     -- starting decode iterations (adaptive)
+local Base64 = require("./src")
 
--- Benchmark stability controls (tune as desired)
-local WARMUP_SECONDS = 0.25  -- time spent warming up each case
-local TARGET_SECONDS = 0.75  -- minimum time per measured sample
-local REPEATS = 10            -- number of samples, median reported
+local SIZE_MB = 64
+local MIN_SECONDS = 1.0
 
--- Load module (support multiple environments)
-local Base64
-do
-    local ok, mod = pcall(require, "./src")
-    if ok and type(mod) == "table" then
-        Base64 = mod
-    else
-        ok, mod = pcall(require, "./src.luau")
-        if ok and type(mod) == "table" then
-            Base64 = mod
-        else
-            error("Unable to load module src.luau")
-        end
-    end
+-- Build deterministic raw payload of SIZE_MB megabytes
+local function makeRawBytes(nBytes: number): string
+    -- Repeating ASCII chunk (non-trivial distribution)
+    local chunk = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ~!@#$%^&*()_+=-[]{}|;:,.<>/?"
+    local rep = math.ceil(nBytes / #chunk)
+    local s = string.rep(chunk, rep)
+    return string.sub(s, 1, nBytes)
 end
 
-local MB = 1024*1024
-local function makeBuffer(n: number): buffer
-    local buf = buffer.create(n)
-    local WRITE_U32 = buffer.writeu32
-    if WRITE_U32 ~= nil then
-        local word = 0x01020304
-        local i = 0
-        local limit = n - (n % 4)
-        while i < limit do
-            WRITE_U32(buf, i, word)
-            i += 4
-        end
-        while i < n do
-            buffer.writeu8(buf, i, (i % 256))
-            i += 1
-        end
-    else
-        for i = 0, n - 1 do
-            buffer.writeu8(buf, i, (i % 256))
-        end
-    end
-    return buf
+local function mb(nBytes: number): number
+    return nBytes / 1e6
 end
 
 local function now(): number
-    -- os.clock returns CPU seconds in Luau CLI; suitable for tight loops
+    -- os.clock is CPU time and stable for benchmarking
     return os.clock()
 end
 
--- Simple utilities for stable measurements
-local function sortNumbers(a: {number})
-    table.sort(a, function(x, y) return x < y end)
+local REPEATS = 16
+local USE_MEBI = true
+
+local function bytesToMB(n: number): number
+    if USE_MEBI then return n / (1024*1024) end
+    return n / 1e6
 end
 
-local function median(a: {number}): number
-    sortNumbers(a)
-    local n = #a
-    if n == 0 then return 0 end
-    if n % 2 == 1 then
-        return a[(n+1)//2]
-    else
-        local i = n//2
-        return 0.5*(a[i] + a[i+1])
+local function measure(label: string, bytesPerIter: number, fn: () -> ())
+    -- Quick warmup
+    fn(); fn()
+    local best = 1e9
+    for _ = 1, 5 do
+        local t0 = now(); fn(); local dt = now() - t0
+        if dt > 0 and dt < best then best = dt end
     end
-end
+    if best == 1e9 then best = 1e-6 end
 
--- Calibrate iterations so each sample runs long enough
-local function calibrate(iters: number, runOnce: (number) -> number): number
-    if iters < 1 then iters = 1 end
-    local t = 0
-    while true do
-        local t0 = now()
-        local acc = 0
-        for _ = 1, iters do
-            acc += runOnce(0)
-        end
+    local iters = math.max(1, math.ceil(MIN_SECONDS / best))
+
+    local results = table.create(REPEATS)
+    local totalBytes = bytesPerIter * iters
+
+    for r = 1, REPEATS do
         local t1 = now()
-        t = t1 - t0
-        if t >= TARGET_SECONDS then
-            break
-        end
-        -- Scale up proportionally, with a minimum growth factor
-        local scale = TARGET_SECONDS / math.max(t, 1e-9)
-        local factor = math.max(2, math.floor(scale + 0.5))
-        iters = math.max(iters + 1, iters * factor)
-        if iters > 1e9 then break end
+        for _ = 1, iters do fn() end
+        local dt = now() - t1
+        results[r] = (totalBytes / dt) / 1e6 -- MB/s (1e6 bytes)
     end
-    return iters
+
+    table.sort(results)
+    local median = results[math.ceil(REPEATS/2)]
+    local minv, maxv = results[1], results[#results]
+    print(string.format(
+        "%s: median %.2f MB/s  [min %.2f, max %.2f]  (bytes=%.2f %sB, iters=%d, repeats=%d)",
+        label, median, minv, maxv,
+        bytesToMB(totalBytes), USE_MEBI and "Mi" or "M", iters, REPEATS
+    ))
 end
 
--- Run a benchmark case: warmup, multiple samples, median throughput
-local function runCase(bytes: number, startIters: number, runOnce: (number) -> number): number
-    -- Warm-up up to WARMUP_SECONDS to stabilize caches and frequency
-    do
-        local t0 = now()
-        local i = 0
-        while (now() - t0) < WARMUP_SECONDS do
-            runOnce(i)
-            i += 1
-        end
-    end
+do
+    print(string.format("Payload: %.1f %sB (SIZE_MB), min time: %.2fs, repeats: %d", SIZE_MB, USE_MEBI and "Mi" or "M", MIN_SECONDS, REPEATS))
 
-    -- Calibrate iterations for stable sample durations
-    local iters = calibrate(startIters, runOnce)
+    local unit = USE_MEBI and (1024*1024) or 1e6
+    local rawBytes = math.floor(SIZE_MB * unit + 0.5)
+    local raw = makeRawBytes(rawBytes)
 
-    -- Collect samples
-    local samples = table.create(REPEATS)
-    local sink = 0
-    for s = 1, REPEATS do
-        local t0 = now()
-        local acc = 0
-        for _ = 1, iters do
-            acc += runOnce(s)
-        end
-        local t1 = now()
-        sink += acc -- keep work alive
-        local seconds = t1 - t0
-        samples[s] = (bytes * iters) / math.max(seconds, 1e-9) / MB
-    end
+    -- Prefer passing buffers into API to focus on hot path
+    local rawBuf = buffer.fromstring(raw)
 
-    -- Minor side-effect to prevent over-optimization
-    if sink == -1 then print("_") end
+    -- Prepare corresponding Base64 input once (not timed)
+    local b64 = Base64.encode(rawBuf)
+    local b64Buf = buffer.fromstring(b64)
 
-    return median(samples)
+    -- Report size expansion for context
+    print(string.format("Sizes: raw=%.2f %sB -> b64=%.2f %sB", bytesToMB(#raw), USE_MEBI and "Mi" or "M", bytesToMB(#b64), USE_MEBI and "Mi" or "M"))
+
+    -- Encode: count original raw bytes per second
+    measure("Encode", #raw, function()
+        -- Pass buffer to avoid string->buffer overhead inside encode
+        Base64.encode(rawBuf)
+    end)
+
+    -- Decode: count decoded output bytes per second (i.e., original size)
+    measure("Decode", #raw, function()
+        -- Pass buffer containing base64 text to avoid string->buffer overhead
+        Base64.decode(b64Buf)
+    end)
 end
-
-local function benchEncode(bytes: number, startIters: number)
-    local encode = Base64.encode
-    local inBuf = makeBuffer(bytes)
-    local inStr = buffer.tostring(inBuf)
-
-    -- Define per-iteration actions
-    local function encBuf(_: number): number
-        local out = encode(inBuf)
-        return #out
-    end
-    local function encStr(_: number): number
-        local out = encode(inStr)
-        return #out
-    end
-
-    local enc_buf_mb_s = runCase(bytes, startIters, encBuf)
-    local enc_str_mb_s = runCase(bytes, startIters, encStr)
-
-    print(string.format("Encode buffer:  %.2f MB/s (median)", enc_buf_mb_s))
-    print(string.format("Encode string:  %.2f MB/s (median)", enc_str_mb_s))
-end
-
-local function benchDecode(bytes: number, startIters: number)
-    local decode = Base64.decode
-    local inBuf = makeBuffer(bytes)
-    local b64 = Base64.encode(inBuf)
-    local b64buf = buffer.fromstring(b64)
-
-    -- Define per-iteration actions
-    local function decStr(_: number): number
-        local out = decode(b64)
-        return #out
-    end
-    local function decBuf(_: number): number
-        local out = decode(b64buf)
-        return #out
-    end
-
-    local dec_str_mb_s = runCase(bytes, startIters, decStr)
-    local dec_buf_mb_s = runCase(bytes, startIters, decBuf)
-
-    print(string.format("Decode string:  %.2f MB/s (median)", dec_str_mb_s))
-    print(string.format("Decode buffer:  %.2f MB/s (median)", dec_buf_mb_s))
-end
-
-local bytes = SIZE_MB * MB
-print(string.format("Benchmarking with %d MB per iteration", SIZE_MB))
-benchEncode(bytes, ENC_ITERS)
-benchDecode(bytes, DEC_ITERS)
-

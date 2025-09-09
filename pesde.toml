@@ -1,9 +1,17 @@
 name = "tokenmaniac/base64"
-version = "0.1.0"
+version = "0.1.1"
 repository = "https://github.com/TokenManiac/Base64"
-description = "The fastest base64 in pure luau yet! This project was entirely made with GPT-5-Thinking medium (with some help of course or else it would've never been this fast)."
-authors = ["TokenManiac", "GPT-5-Thinking"]
+description = "The fastest base64 in pure luau yet!"
+authors = ["GPT-5-Thinking"]
 license = "UNLICENSE"
+
+includes = [
+    "pesde.toml",
+    "README.md",
+    "LICENSE",
+    "lib/**",
+    "docs/**/*.md",
+]
 
 [target]
 environment = "luau"

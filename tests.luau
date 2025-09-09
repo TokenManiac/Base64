@@ -2,14 +2,19 @@
 
 -- Minimal test harness
 local failures = 0
+local checks = 0
 local function expectEqual(a: any, b: any, msg: string?)
+    checks += 1
     if a ~= b then
         failures += 1
         print("FAIL: " .. (msg or "values not equal") .. string.format("\n  got:   %s\n  want:  %s", tostring(a), tostring(b)))
+    else
+        print("PASS: " .. (msg or "values equal"))
     end
 end
 
 local function expectError(fn: () -> (), msg: string?, contains: string?)
+    checks += 1
     local ok, err = pcall(fn)
     if ok then
         failures += 1
@@ -19,7 +24,9 @@ local function expectError(fn: () -> (), msg: string?, contains: string?)
     if contains and not tostring(err):find(contains, 1, true) then
         failures += 1
         print("FAIL: error mismatch\n  got:   " .. tostring(err) .. "\n  want:  contains '" .. contains .. "'")
+        return
     end
+    print("PASS: " .. (msg or "got expected error"))
 end
 
 -- Load module (support multiple environments)
@@ -266,7 +273,7 @@ do
 end
 
 if failures == 0 then
-    print("OK: all tests passed")
+    print(string.format("OK: all tests passed (%d checks)", checks))
 else
-    error("Tests failed: " .. tostring(failures))
+    error(string.format("Tests failed: %d of %d checks", failures, checks))
 end
