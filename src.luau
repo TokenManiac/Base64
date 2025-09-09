@@ -201,14 +201,14 @@ local function decodeToBufferFromBuffer(inBuf: buffer): buffer
 			local w0 = READ_U32(inBuf, i)      -- c0..c3
 			local w1 = READ_U32(inBuf, i + 4)  -- c4..c7
 
-			local a0 = DEC12[w0 % 65536 + 1]; if a0 < 0 then error("Invalid Base64") end
-			local b0 = DEC12[w0 // 65536 + 1]; if b0 < 0 then error("Invalid Base64") end
+			local a0 = DEC12[w0 % 65536 + 1]; if not a0 or a0 < 0 then error("Invalid Base64") end
+			local b0 = DEC12[w0 // 65536 + 1]; if not b0 or b0 < 0 then error("Invalid Base64") end
 			WRITE_U8(out, o,     A_B0[a0 + 1])
 			WRITE_U8(out, o + 1, A_B1HI[a0 + 1] + B_B1LO[b0 + 1])
 			WRITE_U8(out, o + 2, B_B2[b0 + 1])
 
-			local a1 = DEC12[w1 % 65536 + 1]; if a1 < 0 then error("Invalid Base64") end
-			local b1 = DEC12[w1 // 65536 + 1]; if b1 < 0 then error("Invalid Base64") end
+			local a1 = DEC12[w1 % 65536 + 1]; if not a1 or a1 < 0 then error("Invalid Base64") end
+			local b1 = DEC12[w1 // 65536 + 1]; if not b1 or b1 < 0 then error("Invalid Base64") end
 			WRITE_U8(out, o + 3, A_B0[a1 + 1])
 			WRITE_U8(out, o + 4, A_B1HI[a1 + 1] + B_B1LO[b1 + 1])
 			WRITE_U8(out, o + 5, B_B2[b1 + 1])
@@ -217,8 +217,8 @@ local function decodeToBufferFromBuffer(inBuf: buffer): buffer
 		end
 		while i <= bodyEnd - 4 do
 			local w = READ_U32(inBuf, i)
-			local a = DEC12[w % 65536 + 1]; if a < 0 then error("Invalid Base64") end
-			local b = DEC12[w // 65536 + 1]; if b < 0 then error("Invalid Base64") end
+			local a = DEC12[w % 65536 + 1]; if not a or a < 0 then error("Invalid Base64") end
+			local b = DEC12[w // 65536 + 1]; if not b or b < 0 then error("Invalid Base64") end
 			WRITE_U8(out, o,     A_B0[a + 1])
 			WRITE_U8(out, o + 1, A_B1HI[a + 1] + B_B1LO[b + 1])
 			WRITE_U8(out, o + 2, B_B2[b + 1])
@@ -230,18 +230,18 @@ local function decodeToBufferFromBuffer(inBuf: buffer): buffer
 		while i <= stop do
 			local kA = READ_U16(inBuf, i);     local kB = READ_U16(inBuf, i + 2)
 			local kC = READ_U16(inBuf, i + 4); local kD = READ_U16(inBuf, i + 6)
-			local a0 = DEC12[kA + 1]; if a0 < 0 then error("Invalid Base64") end
-			local b0 = DEC12[kB + 1]; if b0 < 0 then error("Invalid Base64") end
-			local a1 = DEC12[kC + 1]; if a1 < 0 then error("Invalid Base64") end
-			local b1 = DEC12[kD + 1]; if b1 < 0 then error("Invalid Base64") end
+			local a0 = DEC12[kA + 1]; if not a0 or a0 < 0 then error("Invalid Base64") end
+			local b0 = DEC12[kB + 1]; if not b0 or b0 < 0 then error("Invalid Base64") end
+			local a1 = DEC12[kC + 1]; if not a1 or a1 < 0 then error("Invalid Base64") end
+			local b1 = DEC12[kD + 1]; if not b1 or b1 < 0 then error("Invalid Base64") end
 			WRITE_U8(out, o,     A_B0[a0 + 1]); WRITE_U8(out, o + 1, A_B1HI[a0 + 1] + B_B1LO[b0 + 1]); WRITE_U8(out, o + 2, B_B2[b0 + 1])
 			WRITE_U8(out, o + 3, A_B0[a1 + 1]); WRITE_U8(out, o + 4, A_B1HI[a1 + 1] + B_B1LO[b1 + 1]); WRITE_U8(out, o + 5, B_B2[b1 + 1])
 			i += 8; o += 6
 		end
 		while i <= bodyEnd - 4 do
 			local kA = READ_U16(inBuf, i); local kB = READ_U16(inBuf, i + 2)
-			local a = DEC12[kA + 1]; if a < 0 then error("Invalid Base64") end
-			local b = DEC12[kB + 1]; if b < 0 then error("Invalid Base64") end
+			local a = DEC12[kA + 1]; if not a or a < 0 then error("Invalid Base64") end
+			local b = DEC12[kB + 1]; if not b or b < 0 then error("Invalid Base64") end
 			WRITE_U8(out, o,     A_B0[a + 1]); WRITE_U8(out, o + 1, A_B1HI[a + 1] + B_B1LO[b + 1]); WRITE_U8(out, o + 2, B_B2[b + 1])
 			i += 4; o += 3
 		end
@@ -253,20 +253,22 @@ local function decodeToBufferFromBuffer(inBuf: buffer): buffer
 		local c1 = READ_U8(inBuf, i + 1)
 		local c2 = READ_U8(inBuf, i + 2)
 		local c3 = READ_U8(inBuf, i + 3)
-		local d0 = DEC6[c0 + 1]; if d0 < 0 then error("Invalid Base64") end
-		local d1 = DEC6[c1 + 1]; if d1 < 0 then error("Invalid Base64") end
+		local d0 = DEC6[c0 + 1]; if not d0 or d0 < 0 then error("Invalid Base64") end
+		local d1 = DEC6[c1 + 1]; if not d1 or d1 < 0 then error("Invalid Base64") end
 
 		if c2 == EQ then
+			-- If c2 is '=', c3 must also be '=' per spec
+			if c3 ~= EQ then error("Invalid Base64") end
 			local a = d0*64 + d1
 			WRITE_U8(out, o, A_B0[a + 1])
 		elseif c3 == EQ then
-			local d2 = DEC6[c2 + 1]; if d2 < 0 then error("Invalid Base64") end
+			local d2 = DEC6[c2 + 1]; if not d2 or d2 < 0 then error("Invalid Base64") end
 			local a = d0*64 + d1; local b = d2*64
 			WRITE_U8(out, o,     A_B0[a + 1])
 			WRITE_U8(out, o + 1, A_B1HI[a + 1] + (b // 256))
 		else
-			local d2 = DEC6[c2 + 1]; if d2 < 0 then error("Invalid Base64") end
-			local d3 = DEC6[c3 + 1]; if d3 < 0 then error("Invalid Base64") end
+			local d2 = DEC6[c2 + 1]; if not d2 or d2 < 0 then error("Invalid Base64") end
+			local d3 = DEC6[c3 + 1]; if not d3 or d3 < 0 then error("Invalid Base64") end
 			local a = d0*64 + d1; local b = d2*64 + d3
 			WRITE_U8(out, o,     A_B0[a + 1])
 			WRITE_U8(out, o + 1, A_B1HI[a + 1] + (b // 256))
