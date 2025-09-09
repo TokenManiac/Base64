@@ -101,8 +101,9 @@ local function encodeFromBuffer(inBuf: buffer): string
 	local fullEnd = n - (n % 3)
 
 	if READ_U32 ~= nil and WRITE_U32 ~= nil then
-		-- ×2 unroll: 6 input bytes -> 8 output chars (2× u32 stores)
-		local stop = fullEnd - 12
+		-- ×2 unroll: process 12 input bytes -> 16 output chars (4× u32 stores)
+		-- Safe stop so that READ_U32(inBuf, i+9) has 4 bytes available: i <= n - 13
+		local stop = n - 13
 		while i <= stop do
 			local w0 = READ_U32(inBuf, i)      -- b0..b3
 			local w1 = READ_U32(inBuf, i + 3)  -- b3..b6
@@ -129,13 +130,13 @@ local function encodeFromBuffer(inBuf: buffer): string
 			local kB3 = (w3 // 256) % 65536
 			WRITE_U32(out, o + 12, encA[kA3 + 1] + encB[kB3 + 1]*0x10000)
 
-			i += 12; o += 8
+			i += 12; o += 16
 		end
-		-- remainder triplets (single step)
+		-- remainder triplets (single step) — use u16+u8 loads to avoid over-reads
 		while i < fullEnd do
-			local w = READ_U32(inBuf, i)
-			local kA = w % 65536
-			local kB = (w // 256) % 65536
+			local kA = READ_U16(inBuf, i)
+			local b2 = READ_U8(inBuf, i + 2)
+			local kB = (kA // 256) + b2*256
 			WRITE_U32(out, o, encA[kA + 1] + encB[kB + 1]*0x10000)
 			i += 3; o += 4
 		end
