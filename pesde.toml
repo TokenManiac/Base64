@@ -1,0 +1,11 @@
+name = "tokenmaniac/base64"
+version = "0.1.0"
+description = "The fastest base64 in pure luau yet! This project was entirely made with GPT-5-Thinking medium (with some help of course or else it would've never been this fast)."
+authors = ["TokenManiac", "GPT-5-Thinking"]
+license = "UNLICENSE"
+
+[target]
+environment = "luau"
+
+[indices]
+default = "https://github.com/pesde-pkg/index"
